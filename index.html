@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinkedIn URL Checker</title>
+<style>html{color-scheme:light}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow working column. Spreadsheet list on top, paste field below, verdict beneath it. */
+:root {
+  --bg: #f2f4f3;
+  --surface: #ffffff;
+  --ink: #15201d;
+  --muted: #5a6a65;
+  --line: #dde3e0;
+  --accent: #3a41c6;
+  --accent-ink: #ffffff;
+  --found: #17713f;
+  --found-bg: #e3f3ea;
+  --miss: #a3441a;
+  --miss-bg: #fbe9e0;
+  --warn-bg: #fdf3d8;
+  --warn: #7a5a00;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1514;
+    --surface: #172120;
+    --ink: #e7efec;
+    --muted: #92a39d;
+    --line: #2a3836;
+    --accent: #9aa0ff;
+    --accent-ink: #0f1514;
+    --found: #5fd196;
+    --found-bg: #12301f;
+    --miss: #f0996b;
+    --miss-bg: #3a1e12;
+    --warn-bg: #3a2f0d;
+    --warn: #e8c55f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1514;
+  --surface: #172120;
+  --ink: #e7efec;
+  --muted: #92a39d;
+  --line: #2a3836;
+  --accent: #9aa0ff;
+  --accent-ink: #0f1514;
+  --found: #5fd196;
+  --found-bg: #12301f;
+  --miss: #f0996b;
+  --miss-bg: #3a1e12;
+  --warn-bg: #3a2f0d;
+  --warn: #e8c55f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.lede { margin: 8px 0 0; color: var(--muted); max-width: 56ch; }
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.panel { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+
+button, .btn {
+  font: inherit;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover { filter: brightness(1.08); }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Spreadsheet panel */
+.drop {
+  background: var(--surface);
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+#source.over .drop,
+#source.over .files { border-color: var(--accent); }
+#source.over .drop { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.drop p { margin: 0; color: var(--muted); }
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.files li {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.files li + li { border-top: 1px solid var(--line); }
+.files .meta { min-width: 0; }
+.files .name { font-weight: 600; overflow-wrap: anywhere; }
+.stats { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.stats .warn { color: var(--warn); font-weight: 500; }
+.bar { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin-top: 10px; }
+.notice {
+  margin-top: 8px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+/* Input */
+textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  resize: vertical;
+  min-height: 84px;
+}
+textarea::placeholder { color: var(--muted); opacity: 0.8; }
+.help { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
+/* Results */
+.idle, .result {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+.idle { color: var(--muted); }
+.result { display: flex; gap: 16px; align-items: flex-start; }
+.result.found { background: var(--found-bg); border-color: transparent; }
+.result.miss { background: var(--miss-bg); border-color: transparent; }
+.badge {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+}
+.found .badge { color: var(--found); }
+.miss .badge { color: var(--miss); }
+.badge svg { width: 24px; height: 24px; }
+.result .body { min-width: 0; flex: 1; }
+.result h2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin: 2px 0 4px;
+}
+.found h2 { color: var(--found); }
+.miss h2 { color: var(--miss); }
+.url { font-family: var(--font-mono); font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+.note { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.locs { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.locs li {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.where { font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ctx { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+
+.summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.summary .spacer { flex: 1; }
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pill.found { background: var(--found-bg); color: var(--found); }
+.pill.miss { background: var(--miss-bg); color: var(--miss); }
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.list li { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; align-items: start; }
+.list li + li { border-top: 1px solid var(--line); }
+.list .pill { margin-top: 1px; }
+.list .u { min-width: 0; }
+.list .where { font-weight: 500; color: var(--muted); }
+.fallback { margin-top: 10px; }
+.fallback textarea { min-height: 100px; font-size: 14px; }
+
+@media (max-width: 480px) {
+  .result { flex-direction: column; gap: 10px; }
+  body { padding-block: 24px 48px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .result, .list { animation: rise 160ms ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Is this LinkedIn URL in my sheets?</h1>
+    <p class="lede">Upload one or more spreadsheets. Paste a LinkedIn URL and you get a yes or no straight away, with the file and row it came from. Everything stays in your browser.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="l-sheet">
+    <p class="label" id="l-sheet">Spreadsheets</p>
+    <div id="source"></div>
+    <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.ods" multiple hidden>
+  </section>
+
+  <section class="panel" aria-labelledby="l-url">
+    <p class="label" id="l-url"><label for="url">URL to check</label></p>
+    <textarea id="url" rows="2" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste a LinkedIn URL, e.g. linkedin.com/in/name"></textarea>
+    <p class="help">Matching ignores https, www, country prefixes, trailing slashes, tracking parameters and capital letters. Paste several URLs, one per line, to check them all at once.</p>
+  </section>
+
+  <section aria-live="polite" id="result"></section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var STORE = "li-url-checker-v2";
+  // state = { files: [{ name, sheets, total, sample }], index: { key: [{ f, s, r, p }] } }
+  var state = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fmt(n) { return n.toLocaleString(); }
+  function plural(n, one, many) { return n === 1 ? one : many; }
+
+  /* ---------- URL parsing ---------- */
+  var URL_SRC = "(?<![a-z0-9-])(?:https?:\\/\\/)?(?:[a-z0-9-]+\\.)*linkedin\\.com\\/(in|pub|company|school|showcase)\\/([^\\s\"'<>,;|()\\[\\]]+)";
+  function findUrls(text) {
+    var out = [];
+    var re = new RegExp(URL_SRC, "gi");
+    var m;
+    while ((m = re.exec(text))) {
+      var type = m[1].toLowerCase();
+      var p = m[2].split(/[?#]/)[0];
+      try { p = decodeURIComponent(p); } catch (e) {}
+      var segs = p.split("/").filter(Boolean);
+      if (!segs.length) continue;
+      var path = type === "pub" ? segs.join("/") : segs[0];
+      path = path.replace(/[.,]+$/, "").toLowerCase();
+      if (path) out.push(type + "/" + path);
+    }
+    return out;
+  }
+
+  /* ---------- Spreadsheet parsing ---------- */
+  function parseWorkbook(wb, name) {
+    var entries = [];
+    var total = 0;
+    wb.SheetNames.forEach(function (sheetName) {
+      var ws = wb.Sheets[sheetName];
+      if (!ws) return;
+      var rows = {};
+      Object.keys(ws).forEach(function (addr) {
+        if (addr.charAt(0) === "!") return;
+        var c = ws[addr];
+        var pos = XLSX.utils.decode_cell(addr);
+        var text = c.w != null ? String(c.w) : (c.v != null ? String(c.v) : "");
+        (rows[pos.r] = rows[pos.r] || []).push({ col: pos.c, text: text, link: c.l && c.l.Target ? String(c.l.Target) : "" });
+      });
+      Object.keys(rows).forEach(function (r) {
+        var cells = rows[r].sort(function (a, b) { return a.col - b.col; });
+        var seen = {};
+        cells.forEach(function (cell) {
+          findUrls(cell.text + " " + cell.link).forEach(function (key) { seen[key] = true; });
+        });
+        var keys = Object.keys(seen);
+        if (!keys.length) return;
+        var preview = cells.map(function (c) { return c.text.trim(); })
+          .filter(function (t) { return t && !/linkedin\.com/i.test(t); })
+          .slice(0, 3).join(" · ");
+        keys.forEach(function (key) {
+          total++;
+          entries.push({ key: key, loc: { f: name, s: sheetName, r: +r + 1, p: preview } });
+        });
+      });
+    });
+    return { file: { name: name, sheets: wb.SheetNames.length, total: total, sample: false }, entries: entries };
+  }
+
+  /* Keep only the files that pass keep(file), and the matching index entries. */
+  function prune(st, keep) {
+    var names = {};
+    var files = st.files.filter(function (f) {
+      if (keep(f)) { names[f.name] = true; return true; }
+      return false;
+    });
+    var index = {};
+    Object.keys(st.index).forEach(function (k) {
+      var l = st.index[k].filter(function (x) { return names[x.f]; });
+      if (l.length) index[k] = l;
+    });
+    return { files: files, index: index };
+  }
+  /* Add a parsed file. A file with the same name replaces the old one; sample data is dropped. */
+  function merge(st, parsed) {
+    var next = st
+      ? prune(st, function (f) { return !f.sample && f.name !== parsed.file.name; })
+      : { files: [], index: {} };
+    next.files.push(parsed.file);
+    parsed.entries.forEach(function (e) {
+      (next.index[e.key] = next.index[e.key] || []).push(e.loc);
+    });
+    return next;
+  }
+
+  function loadSample() {
+    var name = "Sample candidates";
+    var people = [
+      ["amara-sample", "Amara Sample", "Plant Manager"],
+      ["jonas-example", "Jonas Example", "Operations Lead"],
+      ["lin-demo", "Lin Demo", "Quality Director"],
+      ["tobi-placeholder", "Tobi Placeholder", "VP Manufacturing"],
+      ["rosa-testcase", "Rosa Testcase", "Supply Chain Head"],
+      ["kwame-sampledata", "Kwame Sampledata", "Site Director"]
+    ];
+    var index = {};
+    people.forEach(function (p, i) {
+      index["in/" + p[0]] = [{ f: name, s: "Sheet1", r: i + 2, p: p[1] + " · " + p[2] }];
+    });
+    setState({ files: [{ name: name, sheets: 1, total: people.length, sample: true }], index: index });
+  }
+
+  function setState(s) {
+    state = s && s.files.length ? s : null;
+    try {
+      if (state) localStorage.setItem(STORE, JSON.stringify(state));
+      else localStorage.removeItem(STORE);
+    } catch (e) {}
+    renderSource();
+    runCheck();
+  }
+
+  function readOne(file) {
+    return new Promise(function (resolve) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        try {
+          var wb = XLSX.read(new Uint8Array(fr.result), { type: "array", codepage: 65001 });
+          resolve({ ok: true, parsed: parseWorkbook(wb, file.name) });
+        } catch (e) { resolve({ ok: false, name: file.name }); }
+      };
+      fr.onerror = function () { resolve({ ok: false, name: file.name }); };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function readFiles(list) {
+    var files = Array.prototype.slice.call(list || []);
+    if (!files.length) return;
+    if (!window.XLSX) {
+      showNotice("The spreadsheet reader did not load. Check your connection and reload the page.");
+      return;
+    }
+    Promise.all(files.map(readOne)).then(function (results) {
+      var st = state;
+      var failed = [];
+      results.forEach(function (r) {
+        if (r.ok) st = merge(st, r.parsed); else failed.push(r.name);
+      });
+      if (st !== state) setState(st);
+      if (failed.length) showNotice("Could not read " + failed.join(", ") + ". Use .xlsx, .xls or .csv files.");
+    });
+  }
+
+  /* ---------- Spreadsheet panel ---------- */
+  function showNotice(msg) {
+    var n = $("notice");
+    if (!n) {
+      n = document.createElement("div");
+      n.id = "notice";
+      n.className = "notice";
+      $("source").appendChild(n);
+    }
+    n.textContent = msg;
+  }
+
+  function renderSource() {
+    var el = $("source");
+    if (!state) {
+      el.innerHTML =
+        '<div class="drop">' +
+        '<button class="primary" id="pick" type="button">Choose spreadsheets</button>' +
+        '<p>or drop .xlsx, .xls or .csv files here. You can add more than one.</p>' +
+        '<p>No file handy? <button class="link" id="sample" type="button">Try it with sample data</button></p>' +
+        '</div>';
+      $("pick").onclick = function () { $("file").click(); };
+      $("sample").onclick = loadSample;
+      return;
+    }
+    var uniq = {};
+    Object.keys(state.index).forEach(function (k) {
+      var seen = {};
+      state.index[k].forEach(function (l) { seen[l.f] = true; });
+      Object.keys(seen).forEach(function (f) { uniq[f] = (uniq[f] || 0) + 1; });
+    });
+    var totalUnique = Object.keys(state.index).length;
+    var n = state.files.length;
+    el.innerHTML =
+      '<ul class="files">' + state.files.map(function (f, i) {
+        var stats = f.sheets + " " + plural(f.sheets, "sheet", "sheets") + " · " + fmt(f.total) + " LinkedIn URLs · " + fmt(uniq[f.name] || 0) + " unique";
+        if (!f.total) stats += ' · <span class="warn">no LinkedIn URLs found</span>';
+        return '<li><div class="meta"><div class="name">' + esc(f.name) + (f.sample ? " (sample data)" : "") + '</div>' +
+          '<div class="stats">' + stats + '</div></div>' +
+          '<button type="button" data-rm="' + i + '" aria-label="Remove ' + esc(f.name) + '">Remove</button></li>';
+      }).join("") + "</ul>" +
+      '<div class="bar"><button class="primary" id="add" type="button">Add another spreadsheet</button>' +
+      '<span class="stats">' + n + " " + plural(n, "file", "files") + " · " + fmt(totalUnique) + " unique URLs in total · or drop files here</span></div>";
+    $("add").onclick = function () { $("file").click(); };
+    Array.prototype.forEach.call(el.querySelectorAll("[data-rm]"), function (b) {
+      b.onclick = function () {
+        var name = state.files[+b.getAttribute("data-rm")].name;
+        setState(prune(state, function (f) { return f.name !== name; }));
+      };
+    });
+  }
+
+  /* ---------- Results ---------- */
+  var ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var ICON_NO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+
+  function where(loc) {
+    var parts = [];
+    if (state.files.length > 1) parts.push(esc(loc.f));
+    var file = state.files.filter(function (f) { return f.name === loc.f; })[0];
+    if (file && file.sheets > 1) parts.push(esc(loc.s));
+    parts.push("Row " + loc.r);
+    return parts.join(" · ");
+  }
+  function distinctFiles(locs) {
+    var seen = {};
+    locs.forEach(function (l) { seen[l.f] = true; });
+    return Object.keys(seen).length;
+  }
+
+  function runCheck() {
+    var out = $("result");
+    var text = $("url").value;
+    if (!text.trim()) {
+      out.innerHTML = '<div class="idle">' + (state ? "Paste a LinkedIn URL above to see if it is in your spreadsheets." : "Upload a spreadsheet, then paste a LinkedIn URL to check.") + "</div>";
+      return;
+    }
+    var keys = [];
+    findUrls(text).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+    if (!keys.length) {
+      out.innerHTML = '<div class="idle">That does not look like a LinkedIn URL. Paste something like linkedin.com/in/name.</div>';
+      return;
+    }
+    if (!state) {
+      out.innerHTML = '<div class="idle">Upload a spreadsheet first, so there is something to check against.</div>';
+      return;
+    }
+    if (keys.length === 1) {
+      var k = keys[0];
+      var locs = state.index[k];
+      var shown = "linkedin.com/" + esc(k);
+      if (locs) {
+        var nf = distinctFiles(locs);
+        var note = (locs.length === 1 ? "Found once." : "Found " + locs.length + " times") +
+          (locs.length > 1 && nf > 1 ? " across " + nf + " spreadsheets." : locs.length > 1 ? "." : "");
+        out.innerHTML =
+          '<div class="result found"><div class="badge">' + ICON_OK + '</div><div class="body">' +
+          "<h2>Yes, it is in your " + (state.files.length > 1 ? "spreadsheets" : "spreadsheet") + "</h2>" +
+          '<p class="url">' + shown + "</p>" +
+          '<p class="note">' + note + "</p>" +
+          '<ul class="locs">' + locs.slice(0, 20).map(function (l) {
+            return '<li><span class="where">' + where(l) + "</span>" + (l.p ? '<span class="ctx">' + esc(l.p) + "</span>" : "") + "</li>";
+          }).join("") + "</ul></div></div>";
+      } else {
+        var nUnique = Object.keys(state.index).length;
+        var scope = state.files.length > 1 ? "across " + state.files.length + " spreadsheets" : "in " + esc(state.files[0].name);
+        out.innerHTML =
+          '<div class="result miss"><div class="badge">' + ICON_NO + '</div><div class="body">' +
+          "<h2>Not in your " + (state.files.length > 1 ? "spreadsheets" : "spreadsheet") + "</h2>" +
+          '<p class="url">' + shown + "</p>" +
+          '<p class="note">Checked against ' + fmt(nUnique) + " unique URLs " + scope + ".</p></div></div>";
+      }
+      return;
+    }
+    var found = keys.filter(function (k) { return state.index[k]; });
+    var missing = keys.filter(function (k) { return !state.index[k]; });
+    out.innerHTML =
+      '<div class="summary"><span class="pill found">' + found.length + ' found</span><span class="pill miss">' + missing.length + ' not found</span><span class="spacer"></span>' +
+      (missing.length ? '<button id="copyMiss" type="button">Copy not found</button>' : "") + "</div>" +
+      '<ul class="list">' + keys.map(function (k) {
+        var l = state.index[k];
+        return '<li><span class="pill ' + (l ? "found" : "miss") + '">' + (l ? "Found" : "Not found") + "</span>" +
+          '<div class="u"><div class="url">linkedin.com/' + esc(k) + "</div>" +
+          (l ? '<div class="where">' + where(l[0]) + (l.length > 1 ? " (+" + (l.length - 1) + " more)" : "") + (l[0].p ? " · " + esc(l[0].p) : "") + "</div>" : "") +
+          "</div></li>";
+      }).join("") + "</ul>" +
+      '<div id="fallback"></div>';
+    var btn = $("copyMiss");
+    if (btn) {
+      btn.onclick = function () {
+        var list = missing.map(function (k) { return "https://www.linkedin.com/" + k; }).join("\n");
+        var ok = function () { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy not found"; }, 1500); };
+        var fail = function () {
+          $("fallback").innerHTML = '<div class="fallback"><textarea id="fbText" readonly></textarea></div>';
+          var t = $("fbText");
+          t.value = list;
+          t.focus();
+          t.select();
+        };
+        try { navigator.clipboard.writeText(list).then(ok, fail); } catch (e) { fail(); }
+      };
+    }
+  }
+
+  /* ---------- Wire up ---------- */
+  var timer = null;
+  $("url").addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(runCheck, 120);
+  });
+  $("file").addEventListener("change", function (e) {
+    readFiles(e.target.files);
+    e.target.value = "";
+  });
+  var src = $("source");
+  ["dragenter", "dragover"].forEach(function (ev) {
+    src.addEventListener(ev, function (e) { e.preventDefault(); src.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    src.addEventListener(ev, function (e) { e.preventDefault(); src.classList.remove("over"); });
+  });
+  src.addEventListener("drop", function (e) {
+    readFiles(e.dataTransfer && e.dataTransfer.files);
+  });
+
+  try {
+    var saved = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (saved && saved.files && saved.files.length && saved.index) state = saved;
+  } catch (e) { state = null; }
+  renderSource();
+  runCheck();
+})();
+</script>
+</body>
+</html>
